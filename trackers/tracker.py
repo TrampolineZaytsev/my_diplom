@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import cv2
 import supervision as sv
 import numpy as np
+import pandas as pd
 import pickle
 import os
 import sys
@@ -27,6 +28,26 @@ class Tracker:
             detections_puck_batch = self.model_puck.predict(frames[i:i+batch_size], conf = 0.3)
             detections_puck += detections_puck_batch
         return detections, detections_puck
+
+
+    def puck_interpolate(self, puck_coords):
+
+        # получаем из словарей двумерный массив
+        puck_coords = [i.get(1,{}).get('bbox', []) for i in puck_coords]
+
+        # интерполируем кадры без шайбы
+        df_puck_coords = pd.DataFrame(puck_coords, columns=['x1', 'y1', 'x2', 'y2'])
+        df_puck_coords.interpolate(inplace=True)
+        df_puck_coords.bfill(inplace=True)
+
+        # преобразуем обратно в словари для трекеров 
+        puck_coords = [{1:{'bbox':i}} for i in df_puck_coords.to_numpy().tolist()]
+
+        return puck_coords
+
+
+
+
 
 
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None):
@@ -171,6 +192,7 @@ class Tracker:
         cv2.drawContours(frame, [tr_points], 0, (0, 0, 0), 2)
 
         return frame
+
 
     def draw_annotations(self, video_frames, tracks):
         output_video_frames = []
