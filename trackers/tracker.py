@@ -16,7 +16,7 @@ class Tracker:
         self.model = YOLO(model_path)
         self.tracker = sv.ByteTrack()
 
-
+    # детектируем моделью
     def detect_frames(self, frames):
         batch_size = 20
         detections = []
@@ -25,8 +25,10 @@ class Tracker:
         for i in range(0, len(frames), batch_size):
             detections_batch = self.model.predict(frames[i:i+batch_size], conf = 0.4)
             detections += detections_batch
-            detections_puck_batch = self.model_puck.predict(frames[i:i+batch_size], conf = 0.3)
+            detections_puck_batch = self.model_puck.predict(frames[i:i+batch_size], conf = 0.4)
             detections_puck += detections_puck_batch
+
+        
         return detections, detections_puck
 
 
@@ -44,10 +46,6 @@ class Tracker:
         puck_coords = [{1:{'bbox':i}} for i in df_puck_coords.to_numpy().tolist()]
 
         return puck_coords
-
-
-
-
 
 
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None):
@@ -74,11 +72,11 @@ class Tracker:
             cls_names = detection.names
             cls_names_inv = {v:k for k, v in cls_names.items()}
             
-            # конвертируем в list of boxes (в формат для supervision)
+            # вычленяем из предсказания коробки классов
             detection_supervision = sv.Detections.from_ultralytics(detection)
             detection_puck_supervision = sv.Detections.from_ultralytics(detection_puck)
 
-            # отслеживаем треки
+            # отслеживаем треки коробок
             detection_with_tracks = self.tracker.update_with_detections(detection_supervision)
             #detection_puck_with_tracks = self.tracker.update_with_detections(detection_puck_supervision)
 
