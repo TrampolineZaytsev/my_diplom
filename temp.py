@@ -5,6 +5,7 @@ import pickle
 import os
 import sys
 import pickle
+import numpy as np
 
 model = YOLO('models/only_puck_1.pt')
 model2 = YOLO('models/without_puck.pt')
@@ -36,12 +37,16 @@ else:
 
 res2 = model.predict(img)[0]
 res2_det = sv.Detections.from_ultralytics(res2)
+res2_size= res2.orig_shape
+
+
 
 
 print("======================")
-#print(res2.boxes)
+
+print(res2_size)
+print(img.shape)
 print("======================")
-if len(res2_det):
-    print("lkjk")
+
 
 

@@ -7,7 +7,7 @@ import pickle
 import os
 import sys
 sys.path.append('../')
-from utils import get_bbox_width, get_center_of_boxx
+from utils import get_bbox_width, get_center_of_boxx, MySlicer
 
 
 class Tracker:
@@ -15,8 +15,10 @@ class Tracker:
         self.model_puck = YOLO(model_puck_path)
         self.model = YOLO(model_path)
         self.tracker = sv.ByteTrack()
+        self.my_slicer = MySlicer()
 
     # детектируем моделью
+    '''
     def detect_frames(self, frames):
         batch_size = 20
         detections = []
@@ -30,6 +32,47 @@ class Tracker:
 
         
         return detections, detections_puck
+    '''
+
+    def detect_frames(self, frames):
+        batch_size = 20
+        detections = []
+
+        for i in range(0, len(frames), batch_size):
+            detections_batch = self.model.predict(frames[i:i+batch_size], conf = 0.4)
+            detections += detections_batch
+        
+        return detections
+
+    def detect_puck_frames(self, frames):
+
+        detections = []
+        
+        for num_frame in range(len(frames)):
+            # режем изображение
+            Cated_frames = self.my_slicer.get_cut_frame(frames[num_frame])
+
+            # ищем часть изображения с шайбой
+            num_part_puck = None
+            for num_part, part_frame in enumerate(Cated_frames):
+                imgsz = (part_frame.shape[0], part_frame.shape[1])
+                if num_part == 0:
+                    pred = self.model_puck.predict(part_frame, conf=0.3, imgsz=imgsz)[0]
+                else:
+                    pred = self.model_puck.predict(part_frame, conf=0.4, imgsz=imgsz)[0]
+                detection = sv.Detections.from_ultralytics(pred)
+                if len(detection):
+                    num_part_puck = num_part
+                    break
+            if len(detection):
+                detection = detection[0].xyxy[0].tolist()
+                detection = self.my_slicer.scaling_box(num_part_puck, detection)
+            else:
+                detection = []
+
+            detections.append(detection)
+            
+        return detections
 
 
     def puck_interpolate(self, puck_coords):
@@ -55,7 +98,8 @@ class Tracker:
                 tracks = pickle.load(f)
             return tracks
 
-        detections, detections_puck = self.detect_frames(frames)
+        detections = self.detect_frames(frames) 
+        detections_puck = self.detect_puck_frames(frames)
 
         tracks = {
             "players":[],
@@ -68,13 +112,14 @@ class Tracker:
         for frame_num in range(len(detections)):
 
             detection = detections[frame_num]
-            detection_puck = detections_puck[frame_num]
+            detection_puck_supervision = detections_puck[frame_num]
+
             cls_names = detection.names
             cls_names_inv = {v:k for k, v in cls_names.items()}
             
             # вычленяем из предсказания коробки классов
             detection_supervision = sv.Detections.from_ultralytics(detection)
-            detection_puck_supervision = sv.Detections.from_ultralytics(detection_puck)
+            #detection_puck_supervision = sv.Detections.from_ultralytics(detection_puck)
 
             # отслеживаем треки коробок
             detection_with_tracks = self.tracker.update_with_detections(detection_supervision)
@@ -105,10 +150,14 @@ class Tracker:
                 if cls_id == cls_names_inv['goal']:
                      tracks["goals"][frame_num][1] = {"bbox":bbox}
 
+            if len(detection_puck_supervision):
+                tracks["pucks"][frame_num][1] = {"bbox":detection_puck_supervision}
+
+            '''
             for cur_box_puck in detection_puck_supervision:
                 bbox = cur_box_puck[0].tolist()
                 tracks["pucks"][frame_num][1] = {"bbox":bbox}
-
+            '''
 
 
             '''for cur_box_obj in detection_supervision: # как будто в один цикл можно засунуть
