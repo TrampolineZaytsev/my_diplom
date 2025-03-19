@@ -7,7 +7,7 @@ import pickle
 import os
 import sys
 sys.path.append('../')
-from utils import get_bbox_width, get_center_of_boxx, MySlicer
+from utils import get_bbox_width, get_bbox_hight, get_center_of_boxx, MySlicer
 
 
 class Tracker:
@@ -43,6 +43,7 @@ class Tracker:
             detections += detections_batch
         
         return detections
+
 
     def detect_puck_frames(self, frames):
 
@@ -176,22 +177,46 @@ class Tracker:
         return tracks
 
 
-    def draw_ellipse(self, frame, bbox, color, track_id=None):
+    def draw_ellipse(self, frame, bbox, color, track_id=None, is_nimb=False):
         y2 = int(bbox[3])
         x_center, _ = get_center_of_boxx(bbox)
         width = get_bbox_width(bbox)
-        cv2.ellipse(
-            frame,
-            center=(x_center, y2),
-            axes=(int(width/2), int(0.15*width)),
-            angle=0.0,
-            startAngle= -45,
-            endAngle=205,
-            color=color,
-            thickness=2,
-            lineType=cv2.LINE_4
-        )
-        
+        hight = get_bbox_hight(bbox)
+
+        # игрок владеющий шайбой имеет нимб)
+        if is_nimb:
+            # для прозрачности наложим изображение поверх друг друга
+            overlay = frame.copy()
+
+            # рисуем на доп изображениии элипс
+            axes = (int(hight/10), int(hight/40))
+            #axes = (10, 2)
+            cv2.ellipse(
+                overlay,
+                center = (x_center, int(bbox[1])-5),
+                axes = (int(hight/10), int(hight/50)),
+                angle = 0.0,
+                startAngle = 0,
+                endAngle = 360,
+                color = color,
+                thickness = 2,
+                lineType = cv2.LINE_AA)
+
+            # накладываем изобр друг на друга с прозрачностью algha:
+            alpha = 0.7
+            frame = cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0)
+
+        else:
+            cv2.ellipse(
+                frame,
+                center=(x_center, y2),
+                axes=(int(width/2), int(0.15*width)),
+                angle=0.0,
+                startAngle= -45,
+                endAngle=205,
+                color=color,
+                thickness=2,
+                lineType=cv2.LINE_4)
         
 
         if track_id is not None:
@@ -223,6 +248,7 @@ class Tracker:
                         fontFace=cv2.FONT_HERSHEY_COMPLEX,
                         fontScale=0.025*r_width,
                         color=(0, 0, 0))
+            
         return frame 
     
 
@@ -241,6 +267,8 @@ class Tracker:
         return frame
 
 
+    
+
     def draw_annotations(self, video_frames, tracks):
         output_video_frames = []
         for frame_num, frame in enumerate(video_frames):
@@ -254,6 +282,11 @@ class Tracker:
             # отрисовка меток
             for track_id, player in player_dict.items():
                 frame = self.draw_ellipse(frame, player["bbox"], player["team_color"], track_id)
+                
+                # отрисовка нимба над игроком с шайбой
+                if player.get('has_puck', False):
+                    #frame = self.draw_traingle(frame, player["bbox"], (255, 0, 0))
+                    frame = self.draw_ellipse(frame, player["bbox"], (0,190,255), is_nimb=True)
 
             for track_id, referee in referee_dict.items():
                 frame = self.draw_ellipse(frame, referee["bbox"], (150, 150, 150))
