@@ -8,6 +8,10 @@ import os
 import sys
 sys.path.append('../')
 from utils import get_bbox_width, get_bbox_hight, get_center_of_boxx, MySlicer
+from team_assign import TeamAssigner
+
+from utils import get_center_of_boxx, bbox_is_square #################### убери
+
 
 
 class Tracker:
@@ -267,9 +271,8 @@ class Tracker:
         return frame
 
 
-    
-
     def draw_annotations(self, video_frames, tracks):
+
         output_video_frames = []
         for frame_num, frame in enumerate(video_frames):
             frame = frame.copy()
@@ -288,6 +291,26 @@ class Tracker:
                     #frame = self.draw_traingle(frame, player["bbox"], (255, 0, 0))
                     frame = self.draw_ellipse(frame, player["bbox"], (0,190,255), is_nimb=True)
 
+                
+                '''
+                # if track_id == 18: 
+                #     colorP, dirt, near = self.t_assign.get_player_color(frame, player["bbox"])
+                    
+                #     cv2.rectangle(frame,
+                #                 (1500, 900),
+                #                 (1900, 1070),
+                #                 color=colorP,
+                #                 thickness=-1)
+            
+                #     cv2.putText(frame,
+                #                 str(dirt, ),
+                #                 (1500, 1070),
+                #                 fontFace=cv2.FONT_HERSHEY_COMPLEX,
+                #                 fontScale=0.5,
+                #                 color=(0, 0, 0))'
+                '''
+                
+
             for track_id, referee in referee_dict.items():
                 frame = self.draw_ellipse(frame, referee["bbox"], (150, 150, 150))
 
@@ -303,8 +326,39 @@ class Tracker:
             for track_id, puck in puck_dict.items():
                 frame = self.draw_traingle(frame, puck["bbox"], (105, 0, 198))
 
+
             output_video_frames.append(frame)
             
-        
+
 
         return output_video_frames
+    
+
+    def split_team(self, video_frames, players):
+
+        team_assigner = TeamAssigner()
+        
+
+        # берем несколько кадров из видео для определения цветов команд
+        len_video = len(video_frames)
+        player_tracks = []
+        frames_team = []
+        for i in range(1, 10):
+            num_frame_team = int(0.1*i*len_video)
+            frames_team.append(video_frames[num_frame_team])
+
+            cur_player_boxes = list(players[num_frame_team].values())
+            player_tracks.append(cur_player_boxes)
+                
+        # получаем цвета команд
+        team_assigner.get_teams(frames_team,  player_tracks) 
+
+        # покадрово распределяем игроков по командам и дописываем инфу в треки.
+        for num_frame, frame in enumerate(video_frames):
+            for track_id, track in players[num_frame].items():
+                team_of_cur_player = team_assigner.get_team_for_player(frame, track_id, track["bbox"])
+                track["team"] = team_of_cur_player
+                track["team_color"] = team_assigner.team_colors[team_of_cur_player]
+
+        #self.t_assign = team_assigner ################ для отладки. не забудь убрать
+        return players
