@@ -9,35 +9,22 @@ import sys
 sys.path.append('../')
 from utils import get_bbox_width, get_bbox_hight, get_center_of_boxx, MySlicer
 from team_assign import TeamAssigner
-
-from utils import get_center_of_boxx, bbox_is_square #################### убери
-
+from player_have_puck import PlayerPuckAssigner
 
 
+
+
+###################### добавь флаг на шайбу (это потом)
 class Tracker:
     def __init__(self, model_path, model_puck_path):
         self.model_puck = YOLO(model_puck_path)
         self.model = YOLO(model_path)
         self.tracker = sv.ByteTrack()
         self.my_slicer = MySlicer()
+        self.Team_have_puck = [] # для процента владения шайбой
+    
 
-    # детектируем моделью
-    '''
-    def detect_frames(self, frames):
-        batch_size = 20
-        detections = []
-        detections_puck = []
-
-        for i in range(0, len(frames), batch_size):
-            detections_batch = self.model.predict(frames[i:i+batch_size], conf = 0.4)
-            detections += detections_batch
-            detections_puck_batch = self.model_puck.predict(frames[i:i+batch_size], conf = 0.4)
-            detections_puck += detections_puck_batch
-
-        
-        return detections, detections_puck
-    '''
-
+    # обнаружение игроков, вратарей, ворот, судей
     def detect_frames(self, frames):
         batch_size = 20
         detections = []
@@ -49,6 +36,7 @@ class Tracker:
         return detections
 
 
+    # обнаруживаем шайбу ############### поэкспериментируй с размером сетки слайсера
     def detect_puck_frames(self, frames):
 
         detections = []
@@ -80,22 +68,28 @@ class Tracker:
         return detections
 
 
+    # интерполируем треки шайбы
     def puck_interpolate(self, puck_coords):
 
+        
         # получаем из словарей двумерный массив
-        puck_coords = [i.get(1,{}).get('bbox', []) for i in puck_coords]
+        puck_coords_arr = [i.get(1,{}).get('bbox', []) for i in puck_coords]
 
         # интерполируем кадры без шайбы
-        df_puck_coords = pd.DataFrame(puck_coords, columns=['x1', 'y1', 'x2', 'y2'])
+        df_puck_coords = pd.DataFrame(puck_coords_arr, columns=['x1', 'y1', 'x2', 'y2'])
         df_puck_coords.interpolate(inplace=True)
         df_puck_coords.bfill(inplace=True)
 
         # преобразуем обратно в словари для трекеров 
         puck_coords = [{1:{'bbox':i}} for i in df_puck_coords.to_numpy().tolist()]
 
+        # list_puck_coords = df_puck_coords.to_numpy().tolist()
+        # for num_frame, puck_detect in enumerate(puck_coords):
+        #     puck_detect.get(1, {})['bbox'] = list_puck_coords[num_frame]
         return puck_coords
 
 
+    # получаем словарь треков
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None):
 
         if read_from_stub and stub_path is not None and os.path.exists(stub_path):
@@ -181,6 +175,7 @@ class Tracker:
         return tracks
 
 
+    # для отрисовки коробок игроков, судей, вратарей
     def draw_ellipse(self, frame, bbox, color, track_id=None, is_nimb=False):
         y2 = int(bbox[3])
         x_center, _ = get_center_of_boxx(bbox)
@@ -235,14 +230,21 @@ class Tracker:
             r_x2 = int(x_center + r_width//2)
             r_y2 = int(y2 + r_hight//2 + 0.15*width)
 
-            if len(str(track_id))>1:
+            # подбор размеров вывода треков
+            k = 0
+            if len(str(track_id))>2:
+                k =  abs(r_x2 - r_x1)*0.5
+                dif_x = -r_width*0.005
+            elif len(str(track_id))>1:
                 dif_x = -r_width*0.005
             else:
                 dif_x = r_width*0.24
 
+            
+
             cv2.rectangle(frame,
                         (int(r_x1), int(r_y1)),
-                        (int(r_x2), int(r_y2)),
+                        (int(r_x2+k), int(r_y2)),
                         color=color,
                         thickness=-1)
             
@@ -256,6 +258,7 @@ class Tracker:
         return frame 
     
 
+    # для отрисовки коробки шайбы
     def draw_traingle(self, frame, bbox, color):
         y = int(bbox[1])
         x, _ = get_center_of_boxx(bbox)
@@ -271,6 +274,29 @@ class Tracker:
         return frame
 
 
+    def draw_table_puck_pos(self, frame, num_frame):
+        overlay = frame.copy()
+
+        cv2.rectangle(overlay,
+                      (1450, 950),
+                      (1900, 1050),
+                      (80, 80, 80),
+                      -1)
+        
+        alpha = 0.3
+        cv2.addWeighted(overlay, alpha, frame, 1-alpha, 0, frame)
+        
+        cur_team_have_puck = self.Team_have_puck[:num_frame+1]
+        # Get the number of time each team had ball control
+        team_0 = round((cur_team_have_puck.count(0)/(num_frame+1))*100, 2)
+        team_1 = round((cur_team_have_puck.count(1)/(num_frame+1))*100, 2)
+        
+        cv2.putText(frame, f"Team 1: {team_0}%",(1480,992), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)
+        cv2.putText(frame, f"Team 2: {team_1}%",(1480,1024), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)
+        
+
+        return frame
+    # рисуем все треки на видео
     def draw_annotations(self, video_frames, tracks):
 
         output_video_frames = []
@@ -310,7 +336,6 @@ class Tracker:
                 #                 color=(0, 0, 0))'
                 '''
                 
-
             for track_id, referee in referee_dict.items():
                 frame = self.draw_ellipse(frame, referee["bbox"], (150, 150, 150))
 
@@ -327,13 +352,16 @@ class Tracker:
                 frame = self.draw_traingle(frame, puck["bbox"], (105, 0, 198))
 
 
-            output_video_frames.append(frame)
-            
+            # отрисовка статистики владения шайбой:
+            frame = self.draw_table_puck_pos(frame, frame_num)
 
+
+            output_video_frames.append(frame)
 
         return output_video_frames
     
 
+    # добавляем в треки игроков "команда игрока"
     def split_team(self, video_frames, players):
 
         team_assigner = TeamAssigner()
@@ -360,5 +388,30 @@ class Tracker:
                 track["team"] = team_of_cur_player
                 track["team_color"] = team_assigner.team_colors[team_of_cur_player]
 
-        #self.t_assign = team_assigner ################ для отладки. не забудь убрать
-        return players
+        
+    # добавляем в треки игроков "владение шайбы"
+    def add_have_puck(self, video_frames, tracks):
+        player_puck_assigner = PlayerPuckAssigner()
+        
+        for num_frame in range(len(video_frames)):
+            
+            if tracks['pucks'][num_frame]:
+                puck = tracks['pucks'][num_frame][1]['bbox']
+            else:
+                continue # затычка на случай, если нет интерполяции шайбы
+            
+            player_puck_id = player_puck_assigner.assign_player_puck(tracks["players"][num_frame], puck)
+            if player_puck_id is not None:
+                player_with_puck = tracks["players"][num_frame][player_puck_id]
+                player_with_puck['has_puck'] = True
+                self.Team_have_puck.append(player_with_puck['team'])
+            else:
+                if len(self.Team_have_puck): 
+                    self.Team_have_puck.append(self.Team_have_puck[-1])
+                else:
+                    self.Team_have_puck.append(0) # затычка, если в первом же кадре нет игроков владеющих шайбой
+
+        
+        
+
+    

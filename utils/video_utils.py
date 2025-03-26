@@ -4,8 +4,8 @@ def read_video(video_path):
     cap = cv2.VideoCapture(video_path)
     frames = []
     while True:
-        ret, frame = cap.read()
-        if not ret: break
+        flag, frame = cap.read()
+        if not flag: break
         frames.append(frame)
     return frames
 

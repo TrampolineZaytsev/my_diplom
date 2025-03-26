@@ -27,7 +27,7 @@ class TeamAssigner:
 
         # нам нужна только верхняя часть (цвет майки)
         hight_img = len(frame_team)
-        top_half_img = frame_team[int(hight_img*0.19):int(hight_img*0.5), :]
+        top_half_img = frame_team[int(hight_img*0.17):int(hight_img*0.5), :] ######### с кэфами еще можно поиграть
 
         # кластеризуем изображение
         kmeans = self.get_claster_model(top_half_img, 3)
@@ -110,7 +110,7 @@ class TeamAssigner:
         dirty_color = False
         dist_to_team_1 = distance_color(player_color, self.team_colors[0])
         dist_to_team_2 = distance_color(player_color, self.team_colors[1])
-        if 0.4 < dist_to_team_1/dist_to_team_2 < 1.6:
+        if 0.3 < dist_to_team_1/dist_to_team_2 < 1.7: ####################### тут еще можно поэксперементировать с кэфами
             dirty_color = True
 
         # проверим все условия
