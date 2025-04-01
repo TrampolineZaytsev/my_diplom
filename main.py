@@ -8,6 +8,11 @@ def main():
     # read video
     video_frames = read_video('input_video/now_input_video.mp4')
 
+    # ДЛЯ ОТЛАДКИ
+    num_fr = [149, 216, 344, 380, 400, 450, 477, 624]
+    for i in num_fr:
+        cv2.imwrite(f'develop_image/{i}.png', video_frames[i])
+
     # init tracker
     tracker = Tracker('models/without_puck.pt', 'models/only_puck_1.pt')
 
@@ -31,9 +36,6 @@ def main():
     # Отрисовка трэккинга
     output_video_frames = tracker.draw_annotations(video_frames, tracks)
 
-    # ДЛЯ ОТЛАДКИ
-    num_fr = 149
-    cv2.imwrite('output_videos/color_image.jpg', video_frames[num_fr])
 
     '''
     
