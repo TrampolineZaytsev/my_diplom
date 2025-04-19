@@ -7,7 +7,7 @@ import pickle
 import os
 import sys
 sys.path.append('../')
-from utils import get_bbox_width, get_bbox_hight, get_center_of_boxx, MySlicer
+from utils import get_bbox_width, get_bbox_hight, get_center_of_boxx, get_distance, MySlicer
 from team_assign import TeamAssigner
 from player_have_puck import PlayerPuckAssigner
 
@@ -69,24 +69,64 @@ class Tracker:
 
 
     # интерполируем треки шайбы
-    def puck_interpolate(self, puck_coords):
+    def track_interpolate(self, tracks, key_track):
+        
+        track_coord = tracks[key_track]
+        # если шайба, то интерполируем больше пропусков
+        coords_arr = None
+        limit=None # отвечает за максимальное количество заполнений подряд
+
+        if key_track == 'pucks':
+            # получаем из словарей двумерный массив
+            coords_arr = [i.get(1,{}).get('bbox', []) for i in track_coord]
+            limit=None
 
         
-        # получаем из словарей двумерный массив
-        puck_coords_arr = [i.get(1,{}).get('bbox', []) for i in puck_coords]
+            # удаляем очевидно ложные срабатывания
+            # можно не детектировать выше желтой линии ####################################
+            count = 0
+            past_pos = None
+            limit_dist = 80
+            for frame in range(len(coords_arr)):
+                cur_coord = coords_arr[frame]
+                # отслеживаем временное расстояние между соседними обнаружении
+                if not cur_coord:
+                    count += 1
+                else:
+                    cur_pos = get_center_of_boxx(cur_coord)
+                    # если не первый кадр, то вычисляем расстояние между соседними обнаружениями 
+                    # нормированное отдалением кадров друг от друга
+                    if past_pos is not None:
+                        if get_distance(cur_pos, past_pos) / count > limit_dist:
+                            coords_arr[frame] = []
+                            continue
+                    
+                    past_pos = cur_pos
+                    count = 1
+
+
+        elif key_track == 'goals':
+            # получаем из словарей двумерный массив
+            coords_arr = [i.get(1,{}).get('bbox', []) for i in track_coord]
+            limit=5
+
+
+        else:
+            pass
+
 
         # интерполируем кадры без шайбы
-        df_puck_coords = pd.DataFrame(puck_coords_arr, columns=['x1', 'y1', 'x2', 'y2'])
-        df_puck_coords.interpolate(inplace=True)
-        df_puck_coords.bfill(inplace=True)
+        df_puck_coords = pd.DataFrame(coords_arr, columns=['x1', 'y1', 'x2', 'y2'])
+        df_puck_coords.interpolate(inplace=True, limit=limit)
+        # df_puck_coords.bfill(inplace=True)
 
         # преобразуем обратно в словари для трекеров 
-        puck_coords = [{1:{'bbox':i}} for i in df_puck_coords.to_numpy().tolist()]
+        track_coord = [{1:{'bbox':i}} for i in df_puck_coords.to_numpy().tolist()]
 
         # list_puck_coords = df_puck_coords.to_numpy().tolist()
-        # for num_frame, puck_detect in enumerate(puck_coords):
+        # for num_frame, puck_detect in enumerate(track_coord):
         #     puck_detect.get(1, {})['bbox'] = list_puck_coords[num_frame]
-        return puck_coords
+        return track_coord
 
 
     # получаем словарь треков
@@ -274,6 +314,7 @@ class Tracker:
         return frame
 
 
+
     def draw_table_puck_pos(self, frame, num_frame):
         overlay = frame.copy()
 
@@ -296,6 +337,8 @@ class Tracker:
         
 
         return frame
+    
+    
     # рисуем все треки на видео
     def draw_annotations(self, video_frames, tracks):
 
@@ -343,12 +386,23 @@ class Tracker:
                 frame = self.draw_ellipse(frame, goalie["bbox"], (0, 255, 0), frame_num)
 
             for track_id, goal in goal_dict.items():
+
+                # затычка при интерполяции ворот
+                if np.isnan(goal['bbox'][0]):
+                    break
+
                 frame = cv2.rectangle(frame, 
                                       (int(goal["bbox"][0]), int(goal["bbox"][1])),
                                       (int(goal["bbox"][2]), int(goal["bbox"][3])),
                                       color=(255,0,0), thickness=2)
             
             for track_id, puck in puck_dict.items():
+
+                # затычка при интерполяции ворот
+                if np.isnan(puck['bbox'][0]):
+                    break
+
+
                 frame = self.draw_traingle(frame, puck["bbox"], (105, 0, 198))
 
 
@@ -394,11 +448,11 @@ class Tracker:
         player_puck_assigner = PlayerPuckAssigner()
         
         for num_frame in range(len(video_frames)):
-            
-            if tracks['pucks'][num_frame]:
-                puck = tracks['pucks'][num_frame][1]['bbox']
-            else:
-                continue # затычка на случай, если нет интерполяции шайбы
+                
+            puck = tracks['pucks'][num_frame][1]['bbox']
+            # затычка на случай, если нет интерполяции шайбы на данный кадр
+            if np.isnan(puck[0]):
+                continue
             
             player_puck_id = player_puck_assigner.assign_player_puck(tracks["players"][num_frame], puck)
             if player_puck_id is not None:

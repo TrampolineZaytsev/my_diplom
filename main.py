@@ -8,17 +8,29 @@ def main():
     # read video
     video_frames = read_video('input_video/now_input_video.mp4')
 
-    # ДЛЯ ОТЛАДКИ
-    num_fr = [149, 216, 344, 380, 400, 450, 477, 624]
-    for i in num_fr:
-        cv2.imwrite(f'develop_image/{i}.png', video_frames[i])
-
     # init tracker
     tracker = Tracker('models/without_puck.pt', 'models/only_puck_1.pt')
 
     # получаем треки
     tracks = tracker.get_object_tracks(video_frames, read_from_stub=True, stub_path='stubs/track_stubs.pk1')
     #tracks = tracker.get_object_tracks(video_frames)
+
+
+
+
+    # ДЛЯ ОТЛАДКИ
+    # num_fr = [149, 216, 344, 380, 400, 450, 477, 624]
+    # num_frames = [216, 344]
+    # for num_fr in num_frames:
+    #     num_tr = 1
+    #     print(tracks['goals'][num_fr])
+    #     bbox = [int(i) for i in tracks['goals'][num_fr][num_tr]['bbox']]
+    #     img = video_frames[num_fr][bbox[1]:bbox[3],bbox[0]:bbox[2]]
+    #     cv2.imwrite(f'develop_image/goal_left_{num_fr}.png', img)
+    #     #cv2.imwrite(f'develop_image/{num_fr}.png', video_frames[i])
+
+
+
     
     # разбиваем игроков по командам
     # надо настроить алгоритм на поиск наиболее подходящего кадра для
@@ -26,8 +38,8 @@ def main():
     
 
     # интерполяция шайбы   ############# разрезать изображение получше
-    tracks['pucks'] = tracker.puck_interpolate(tracks['pucks'])
-    
+    tracks['pucks'] = tracker.track_interpolate(tracks, 'pucks')
+    tracks['goals'] = tracker.track_interpolate(tracks, 'goals')
 
     # поиск игрока владеющего шайбой
     tracker.add_have_puck(video_frames, tracks)
@@ -46,6 +58,7 @@ def main():
     # img = video_frames[num_fr][bbox[1]:bbox[3],bbox[0]:bbox[2]]
     # cv2.imwrite('output_videos/crop_image.jpg', img)
     '''
+    
     
     # сохраним аннотированное видео
     save_video(output_video_frames, 'output_videos/output_video.mp4')
